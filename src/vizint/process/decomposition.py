@@ -11,6 +11,7 @@ from typing import Optional, Union
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import matplotlib.dates as mdates          # FIX 1: import trực tiếp, không dùng plt.matplotlib.dates
 from matplotlib.figure import Figure
 
 
@@ -47,11 +48,33 @@ def decomposition_chart(
     Returns
     -------
     Figure
+
+    Raises
+    ------
+    ImportError
+        If ``statsmodels`` is not installed.
     """
-    from statsmodels.tsa.seasonal import seasonal_decompose
+    # FIX 2: lazy import với error message rõ ràng
+    try:
+        from statsmodels.tsa.seasonal import seasonal_decompose
+    except ImportError:
+        raise ImportError(
+            "statsmodels is required for decomposition_chart(). "
+            "Install it with:  pip install statsmodels"
+        )
 
     result = seasonal_decompose(series, model=model, period=period,
                                 extrapolate_trend="freq")
+
+    # FIX 3: extract x-axis rõ ràng — tránh DatetimeIndex-to-epoch misinterpretation
+    if isinstance(series, pd.Series) and isinstance(series.index, pd.DatetimeIndex):
+        x = series.index
+        use_dates = True
+        bar_width = pd.Timedelta(days=20)  # FIX 4: width=None → bars invisible (0.8 seconds)
+    else:
+        x = np.arange(len(series))
+        use_dates = False
+        bar_width = 0.8
 
     fig, axes = plt.subplots(4, 1, figsize=figsize, facecolor="white",
                              sharex=True)
@@ -66,15 +89,18 @@ def decomposition_chart(
     ]
 
     for ax, (label, comp, color) in zip(axes, components):
+        y_vals = comp.values if isinstance(comp, pd.Series) else np.asarray(comp)
         if label == "Residual":
-            ax.bar(range(len(comp)), comp, color=color, alpha=0.6)
+            ax.bar(x, y_vals, color=color, alpha=0.6, width=bar_width)
         else:
-            ax.plot(comp, color=color, linewidth=1.8)
+            ax.plot(x, y_vals, color=color, linewidth=1.8)
         ax.set_ylabel(label, fontsize=9, color="#444444")
         for spine in ["top", "right"]:
             ax.spines[spine].set_visible(False)
         ax.tick_params(labelsize=8)
         ax.set_facecolor("white")
+        if use_dates:
+            ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y"))
 
     fig.tight_layout()
     return fig
